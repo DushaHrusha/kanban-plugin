@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>Kanban Board</title>
+    <style>
+      :root {
+        font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      }
+
+      * { box-sizing: border-box; }
+
+      html { height: 100%; }
+
+      body {
+        min-height: 100%;
+        margin: 0;
+        background: var(--color-background, transparent);
+        color: var(--color-foreground, #111827);
+        overflow: visible;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      button, input, select { font: inherit; }
+
+      .shell {
+        padding: 16px;
+        overflow: visible;
+      }
+
+      .board {
+        display: flex;
+        flex-direction: row;
+        gap: 16px;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding-bottom: 8px;
+      }
+
+      .column {
+        flex: 0 0 280px;
+        min-width: 260px;
+        max-width: 320px;
+        background: transparent;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: var(--radius-lg, 12px);
+        padding: 14px;
+        min-height: 120px;
+        transition: border-color 160ms ease;
+      }
+
+      .column.drag-over {
+        border-color: var(--color-primary, #2563eb);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #2563eb) 20%, transparent);
+      }
+
+      .column-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .column-head-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+      }
+
+      .column-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        font-family: var(--font-mono, "JetBrains Mono", monospace);
+        color: var(--color-foreground, #111827);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .column-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        font-size: 10px;
+        font-family: var(--font-mono, monospace);
+        font-weight: 700;
+        color: var(--color-muted-fg, #6b7280);
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: var(--radius-sm, 4px);
+        flex-shrink: 0;
+      }
+
+      .column-menu-btn {
+        background: none;
+        border: none;
+        padding: 2px 4px;
+        cursor: pointer;
+        color: var(--color-muted-fg, #6b7280);
+        font-size: 14px;
+        border-radius: var(--radius-sm, 4px);
+        line-height: 1;
+        flex-shrink: 0;
+        transition: color 120ms ease;
+      }
+
+      .column-menu-btn:hover {
+        color: var(--color-foreground, #111827);
+      }
+
+      .add-task-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 6px 4px;
+        margin-bottom: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-muted-fg, #6b7280);
+        font-size: 10px;
+        font-family: var(--font-mono, monospace);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        transition: color 120ms ease;
+        text-align: left;
+      }
+
+      .add-task-btn:hover {
+        color: var(--color-foreground, #111827);
+      }
+
+      .add-task-btn .plus {
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 16px;
+      }
+
+      .card {
+        background: transparent;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-left: 3px solid var(--card-accent, var(--color-border, #e5e7eb));
+        border-radius: var(--radius-md, 8px);
+        padding: 10px 10px 8px;
+        cursor: grab;
+        touch-action: pan-y;
+        transition: border-color 160ms ease, box-shadow 120ms ease, transform 120ms ease;
+        position: relative;
+      }
+
+      .card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--color-foreground, #111827) 8%, transparent);
+      }
+
+      .card:active { cursor: grabbing; transform: scale(1.01); }
+
+      .card.dragging { opacity: 0.35; transform: scale(0.98); }
+
+      .card.is-done { opacity: 0.55; }
+
+      .card.is-done .card-title { text-decoration: line-through; }
+
+      .drag-ghost {
+        position: fixed;
+        pointer-events: none;
+        z-index: 10000;
+        opacity: 0.92;
+        will-change: transform;
+        box-shadow: 0 12px 32px color-mix(in srgb, var(--color-foreground, #111) 18%, transparent);
+        max-width: 300px;
+        border-radius: var(--radius-md, 8px);
+      }
+
+      .card-title {
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.4;
+        color: var(--color-foreground, #111827);
+        margin: 0 0 4px;
+      }
+
+      .card-project {
+        font-size: 10px;
+        color: var(--color-muted-fg, #6b7280);
+        margin-bottom: 3px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .card-date {
+        font-size: 9px;
+        color: var(--color-secondary-fg, #9ca3af);
+        font-family: var(--font-mono, monospace);
+        margin-bottom: 6px;
+      }
+
+      .card-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: 4px;
+      }
+
+      .priority-badge {
+        font-size: 9px;
+        font-weight: 700;
+        font-family: var(--font-mono, monospace);
+        letter-spacing: 0.5px;
+        padding: 2px 6px;
+        border: 1px solid currentColor;
+        border-radius: var(--radius-sm, 4px);
+        background: transparent;
+        text-transform: uppercase;
+      }
+
+      .priority-badge--low    { color: var(--color-priority-low,    #27ae60); }
+      .priority-badge--medium { color: var(--color-priority-medium, #f1c40f); }
+      .priority-badge--high   { color: var(--color-priority-high,   #e67e22); }
+      .priority-badge--urgent { color: var(--color-priority-urgent, #e74c3c); }
+
+      .priority-badge--done {
+        background: var(--color-priority-low, #27ae60);
+        border-color: var(--color-priority-low, #27ae60);
+        color: var(--color-background, #fff);
+      }
+
+      .composer {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 8px;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: var(--radius-md, 8px);
+      }
+
+      .composer-input {
+        width: 100%;
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: var(--radius-sm, 4px);
+        padding: 7px 10px;
+        font-size: 12px;
+        outline: none;
+        background: transparent;
+        color: var(--color-foreground, #111827);
+        transition: border-color 120ms ease;
+      }
+
+      .composer-input:focus {
+        border-color: var(--color-primary, #2563eb);
+      }
+
+      .composer-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .btn-create {
+        flex: 1;
+        padding: 6px 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        background: var(--color-primary, #2563eb);
+        color: var(--color-primary-fg, #fff);
+        border: none;
+        border-radius: var(--radius-sm, 4px);
+      }
+
+      .btn-cancel {
+        padding: 6px 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        background: transparent;
+        color: var(--color-muted-fg, #6b7280);
+        border: 1px solid var(--color-border, #e5e7eb);
+        border-radius: var(--radius-sm, 4px);
+      }
+
+      .btn-cancel:hover {
+        color: var(--color-foreground, #111827);
+      }
+
+      .empty-col {
+        font-size: 10px;
+        font-family: var(--font-mono, monospace);
+        color: var(--color-secondary-fg, #9ca3af);
+        padding: 8px 4px;
+        letter-spacing: 0.5px;
+      }
+
+      .error-state {
+        padding: 24px;
+        border: 1px dashed var(--color-priority-urgent, #e74c3c);
+        border-radius: var(--radius-md, 8px);
+        color: var(--color-priority-urgent, #e74c3c);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      @media (max-width: 768px) {
+        .shell { padding: 12px; }
+        .board {
+          flex-direction: column;
+          overflow-x: visible;
+        }
+        .column {
+          flex: none;
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="board" id="board"></div>
+    </div>
+
+    <script>
+      const SORT_STORAGE_KEY = 'kanban.sorting';
+
+      let columns = [];
+      let appState = window.__TASKFLOW_INITIAL_STATE || {
+        context: {},
+        project: null,
+        tasks: [],
+        theme: null
+      };
+      let sortingState = {};
+      let composerState = { columnId: null, value: '' };
+      let isBootstrapped = false;
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;');
+      }
+
+      function escapeAttribute(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('"', '&quot;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      }
+
+      function parseDate(value) {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+
+      function sameDay(a, b) {
+        return a.getFullYear() === b.getFullYear() &&
+               a.getMonth() === b.getMonth() &&
+               a.getDate() === b.getDate();
+      }
+
+      function formatShortDate(date) {
+        const today = new Date();
+        if (sameDay(date, today)) return 'TODAY';
+        return new Intl.DateTimeFormat(undefined, { day: '2-digit', month: 'short' })
+          .format(date).toUpperCase();
+      }
+
+      function priorityWeight(priority) {
+        return { urgent: 4, high: 3, medium: 2, low: 1 }[priority] || 0;
+      }
+
+      function taskColumn(task) {
+        if (task.completed) return columns[columns.length - 1]?.id || 'done';
+        const status = task.plugin_data?.statuses?.status;
+        return status || columns[0]?.id || 'todo';
+      }
+
+      function accentColor(task) {
+        if (task.completed) return 'var(--color-border)';
+        if (!task.dueDate) {
+          if (!task.priority || task.priority === 'none') return 'var(--color-border)';
+          return 'var(--color-priority-' + task.priority + ')';
+        }
+        const due = parseDate(task.dueDate);
+        if (!due) return 'var(--color-border)';
+        const diffMs = due.getTime() - Date.now();
+        if (diffMs < 0) return 'var(--color-priority-urgent)';
+        if (diffMs < 24 * 3600 * 1000) return 'var(--color-priority-high)';
+        if (!task.priority || task.priority === 'none') return 'var(--color-border)';
+        return 'var(--color-priority-' + task.priority + ')';
+      }
+
+      function renderPriorityBadge(task) {
+        if (task.completed) {
+          return '<span class="priority-badge priority-badge--done">DONE</span>';
+        }
+        if (!task.priority || task.priority === 'none') return '';
+        return '<span class="priority-badge priority-badge--' + escapeHtml(task.priority) + '">' + escapeHtml(task.priority.toUpperCase()) + '</span>';
+      }
+
+      function compareDatesAsc(a, b) {
+        const aD = parseDate(a), bD = parseDate(b);
+        if (!aD && !bD) return 0;
+        if (aD && !bD) return -1;
+        if (!aD && bD) return 1;
+        return aD.getTime() - bD.getTime();
+      }
+
+      function fallbackCompare(a, b) {
+        const pd = Number(a.position || 0) - Number(b.position || 0);
+        return pd !== 0 ? pd : compareDatesAsc(b.updatedAt, a.updatedAt);
+      }
+
+      function compareTasks(a, b, mode) {
+        switch (mode) {
+          case 'priority': {
+            const d = priorityWeight(b.priority) - priorityWeight(a.priority);
+            return d !== 0 ? d : fallbackCompare(a, b);
+          }
+          case 'dueDate': {
+            const d = compareDatesAsc(a.dueDate, b.dueDate);
+            return d !== 0 ? d : fallbackCompare(a, b);
+          }
+          case 'updated': {
+            const d = compareDatesAsc(b.updatedAt, a.updatedAt);
+            return d !== 0 ? d : fallbackCompare(a, b);
+          }
+          case 'title': {
+            const d = String(a.title || '').localeCompare(String(b.title || ''));
+            return d !== 0 ? d : fallbackCompare(a, b);
+          }
+          default:
+            return fallbackCompare(a, b);
+        }
+      }
+
+      function sortTasks(tasks, columnId) {
+        const mode = sortingState[columnId] || 'manual';
+        return [...tasks].sort((a, b) => compareTasks(a, b, mode));
+      }
+
+      function normalizeSorting(input) {
+        const next = {};
+        for (const col of columns) {
+          next[col.id] = (input && typeof input[col.id] === 'string') ? input[col.id] : 'manual';
+        }
+        return next;
+      }
+
+      async function loadStatuses() {
+        try {
+          const raw = await window.taskflow.sharedStorage.get('plugin_statuses_columns');
+          if (raw) {
+            columns = JSON.parse(raw);
+          } else {
+            columns = [
+              { id: 'todo',   title: 'To Do'      },
+              { id: 'doing',  title: 'In Progress' },
+              { id: 'review', title: 'In Review'   },
+              { id: 'done',   title: 'Done'        }
+            ];
+            await window.taskflow.sharedStorage.set('plugin_statuses_columns', JSON.stringify(columns));
+          }
+        } catch (_) {
+          columns = [
+            { id: 'todo', title: 'To Do' },
+            { id: 'done', title: 'Done'  }
+          ];
+        }
+      }
+
+      async function loadSorting() {
+        try {
+          const raw = await window.taskflow.storage.get(SORT_STORAGE_KEY);
+          sortingState = normalizeSorting(raw ? JSON.parse(raw) : {});
+        } catch (_) {
+          sortingState = normalizeSorting({});
+        }
+      }
+
+      async function saveSorting() {
+        try {
+          await window.taskflow.storage.set(SORT_STORAGE_KEY, JSON.stringify(sortingState));
+        } catch (_) {}
+      }
+
+      async function refreshTasks() {
+        const projectId = appState.context?.projectId;
+        const tasks = await window.taskflow.tasks.listByProject(projectId || null);
+        appState = { ...appState, tasks };
+        render();
+      }
+
+      async function createTask(columnId) {
+        const title = composerState.value.trim();
+        if (!title) return;
+        const isDone = columnId === columns[columns.length - 1]?.id || columnId === 'done';
+        await window.taskflow.tasks.create({
+          title,
+          projectId: appState.context?.projectId,
+          completed: isDone,
+          pluginData: { statuses: { status: isDone ? 'done' : columnId } }
+        });
+        composerState = { columnId: null, value: '' };
+        await refreshTasks();
+      }
+
+      function openComposer(columnId) {
+        composerState = { columnId, value: '' };
+        render();
+        const input = document.querySelector('[data-composer-input="' + columnId + '"]');
+        if (input) input.focus();
+      }
+
+      function cancelComposer() {
+        composerState = { columnId: null, value: '' };
+        render();
+      }
+
+      function updateColumnCounts() {
+        columns.forEach(col => {
+          const el = document.querySelector('.column[data-column-id="' + col.id + '"]');
+          if (!el) return;
+          const count = el.querySelectorAll('.cards .card').length;
+          const countEl = el.querySelector('.column-count');
+          if (countEl) countEl.textContent = count;
+        });
+      }
+
+      function buildCardHtml(task) {
+        const accent = accentColor(task);
+        const badge = renderPriorityBadge(task);
+        const dueDate = task.dueDate ? parseDate(task.dueDate) : null;
+        const dateLabel = dueDate ? formatShortDate(dueDate) : '';
+        const projectName = appState.project ? '' : (task.projectName || '');
+
+        let html = '<article class="card' + (task.completed ? ' is-done' : '') + '" data-task-id="' + escapeAttribute(task.id) + '" style="--card-accent:' + accent + '">';
+        html += '<div class="card-title">' + escapeHtml(task.title) + '</div>';
+        if (projectName) html += '<div class="card-project">' + escapeHtml(projectName) + '</div>';
+        if (dateLabel) html += '<div class="card-date">' + escapeHtml(dateLabel) + '</div>';
+        if (badge) html += '<div class="card-footer">' + badge + '</div>';
+        html += '</article>';
+        return html;
+      }
+
+      function buildComposerHtml(columnId) {
+        if (composerState.columnId !== columnId) return '';
+        return '<div class="composer">' +
+          '<input class="composer-input" type="text" value="' + escapeAttribute(composerState.value) + '" placeholder="Task title…" data-composer-input="' + escapeAttribute(columnId) + '" />' +
+          '<div class="composer-actions">' +
+          '<button class="btn-create" data-create-column="' + escapeAttribute(columnId) + '">CREATE</button>' +
+          '<button class="btn-cancel" data-cancel-composer="' + escapeAttribute(columnId) + '">CANCEL</button>' +
+          '</div></div>';
+      }
+
+      function render() {
+        const board = document.getElementById('board');
+        const tasks = appState.tasks || [];
+
+        if (columns.length < 2) {
+          board.innerHTML = '<div class="error-state"><strong>KANBAN ERROR</strong><br/>Missing columns. Please enable the STATUSES plugin.</div>';
+          return;
+        }
+
+        board.innerHTML = '';
+
+        for (const column of columns) {
+          const columnTasks = sortTasks(
+            tasks.filter(task => taskColumn(task) === column.id),
+            column.id
+          );
+
+          const cardsHtml = columnTasks.length === 0
+            ? '<div class="empty-col">Drop tasks here</div>'
+            : columnTasks.map(buildCardHtml).join('');
+
+          const colEl = document.createElement('section');
+          colEl.className = 'column';
+          colEl.dataset.columnId = column.id;
+          colEl.innerHTML =
+            '<div class="column-head">' +
+              '<div class="column-head-left">' +
+                '<span class="column-title">' + escapeHtml(column.title) + '</span>' +
+                '<span class="column-count">' + columnTasks.length + '</span>' +
+              '</div>' +
+              '<button class="column-menu-btn" data-col-menu="' + escapeAttribute(column.id) + '" title="Column options">…</button>' +
+            '</div>' +
+            '<button class="add-task-btn" data-add-column="' + escapeAttribute(column.id) + '">' +
+              '<span class="plus">+</span> ADD TASK' +
+            '</button>' +
+            '<div class="cards">' + cardsHtml + '</div>' +
+            buildComposerHtml(column.id);
+
+          board.appendChild(colEl);
+        }
+
+        // Event listeners
+        board.querySelectorAll('[data-add-column]').forEach(btn => {
+          btn.addEventListener('click', () => openComposer(btn.dataset.addColumn));
+        });
+
+        board.querySelectorAll('[data-composer-input]').forEach(input => {
+          input.addEventListener('input', e => { composerState.value = e.target.value; });
+          input.addEventListener('keydown', async e => {
+            if (e.key === 'Enter') { e.preventDefault(); await createTask(input.dataset.composerInput); }
+            if (e.key === 'Escape') { e.preventDefault(); cancelComposer(); }
+          });
+        });
+
+        board.querySelectorAll('[data-create-column]').forEach(btn => {
+          btn.addEventListener('click', async () => await createTask(btn.dataset.createColumn));
+        });
+
+        board.querySelectorAll('[data-cancel-composer]').forEach(btn => {
+          btn.addEventListener('click', () => cancelComposer());
+        });
+
+        board.querySelectorAll('.card').forEach(card => {
+          setupCardDrag(card);
+          card.addEventListener('click', async () => {
+            if (dragState.dragOccurred) { dragState.dragOccurred = false; return; }
+            const taskId = card.dataset.taskId;
+            if (taskId) await window.taskflow.host.openTask(taskId);
+          });
+        });
+      }
+
+      // Drag & Drop
+      let dragState = {
+        taskId: null, sourceColumnId: null, card: null, ghost: null,
+        startX: 0, startY: 0, offsetX: 10, offsetY: 10,
+        isDragging: false, threshold: 5, rafId: null,
+        lastColumnHighlight: null, cachedColumns: [], dragOccurred: false
+      };
+
+      function resetDragState() {
+        dragState = {
+          taskId: null, sourceColumnId: null, card: null, ghost: null,
+          startX: 0, startY: 0, offsetX: 10, offsetY: 10,
+          isDragging: false, threshold: 5, rafId: null,
+          lastColumnHighlight: null, cachedColumns: [], dragOccurred: false
+        };
+      }
+
+      function createDragGhost(card, clientX, clientY) {
+        const rect = card.getBoundingClientRect();
+        const ghost = card.cloneNode(true);
+        ghost.classList.add('drag-ghost');
+        ghost.style.width = rect.width + 'px';
+        ghost.style.left = '0';
+        ghost.style.top = '0';
+        ghost.style.transform = 'translate(' + (clientX - 10) + 'px, ' + (clientY - 10) + 'px) rotate(2deg) scale(1.03)';
+        document.body.appendChild(ghost);
+        return ghost;
+      }
+
+      function cacheColumnRects() {
+        const cols = document.querySelectorAll('.column');
+        dragState.cachedColumns = Array.from(cols).map(col => ({
+          element: col,
+          id: col.dataset.columnId,
+          rect: col.getBoundingClientRect()
+        }));
+      }
+
+      function findColumnAtPoint(x, y) {
+        for (const col of dragState.cachedColumns) {
+          const r = col.rect;
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return col.id;
+        }
+        return null;
+      }
+
+      function setupCardDrag(card) {
+        card.addEventListener('mousedown', e => {
+          if (e.button !== 0) return;
+          if (e.target.closest('button')) return;
+          dragState.dragOccurred = false;
+          dragState.taskId = card.dataset.taskId;
+          dragState.sourceColumnId = card.closest('.column')?.dataset.columnId;
+          dragState.card = card;
+          dragState.startX = e.clientX;
+          dragState.startY = e.clientY;
+          dragState.isDragging = false;
+
+          const onMove = ev => {
+            if (!dragState.taskId) return;
+            if (!dragState.isDragging) {
+              const dx = ev.clientX - dragState.startX;
+              const dy = ev.clientY - dragState.startY;
+              if (Math.sqrt(dx * dx + dy * dy) < dragState.threshold) return;
+              dragState.isDragging = true;
+              if (dragState.card && !dragState.ghost) {
+                dragState.ghost = createDragGhost(dragState.card, ev.clientX, ev.clientY);
+                dragState.card.classList.add('dragging');
+                cacheColumnRects();
+              }
+            }
+            if (dragState.rafId) return;
+            dragState.rafId = requestAnimationFrame(() => {
+              dragState.rafId = null;
+              if (dragState.ghost) {
+                dragState.ghost.style.transform = 'translate(' + (ev.clientX - dragState.offsetX) + 'px, ' + (ev.clientY - dragState.offsetY) + 'px) rotate(2deg) scale(1.03)';
+              }
+              const targetId = findColumnAtPoint(ev.clientX, ev.clientY);
+              if (targetId !== dragState.lastColumnHighlight) {
+                document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+                if (targetId) {
+                  const tCol = document.querySelector('.column[data-column-id="' + targetId + '"]');
+                  if (tCol) tCol.classList.add('drag-over');
+                }
+                dragState.lastColumnHighlight = targetId;
+              }
+            });
+          };
+
+          const onUp = async ev => {
+            if (dragState.rafId) { cancelAnimationFrame(dragState.rafId); dragState.rafId = null; }
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+
+            if (!dragState.isDragging || !dragState.taskId) {
+              document.querySelectorAll('.card.dragging').forEach(el => el.classList.remove('dragging'));
+              document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+              if (dragState.ghost) { dragState.ghost.remove(); dragState.ghost = null; }
+              resetDragState();
+              return;
+            }
+
+            const targetColumnId = findColumnAtPoint(ev.clientX, ev.clientY);
+
+            if (targetColumnId && targetColumnId !== dragState.sourceColumnId) {
+              const cardEl = document.querySelector('.card[data-task-id="' + dragState.taskId + '"]');
+              const targetColEl = document.querySelector('.column[data-column-id="' + targetColumnId + '"]');
+              if (cardEl && targetColEl) {
+                const cardsContainer = targetColEl.querySelector('.cards');
+                if (cardsContainer) { cardsContainer.appendChild(cardEl); updateColumnCounts(); }
+              }
+              const task = appState.tasks.find(t => t.id === dragState.taskId);
+              if (task) {
+                const isDone = targetColumnId === columns[columns.length - 1]?.id || targetColumnId === 'done';
+                task.completed = isDone;
+                task.plugin_data = { statuses: { status: isDone ? 'done' : targetColumnId } };
+              }
+            }
+
+            document.querySelectorAll('.card.dragging').forEach(el => el.classList.remove('dragging'));
+            document.querySelectorAll('.column.drag-over').forEach(el => el.classList.remove('drag-over'));
+            if (dragState.ghost) { dragState.ghost.remove(); dragState.ghost = null; }
+
+            if (targetColumnId && targetColumnId !== dragState.sourceColumnId) {
+              const taskId = dragState.taskId;
+              const isDone = targetColumnId === columns[columns.length - 1]?.id || targetColumnId === 'done';
+              (async () => {
+                try {
+                  if (isDone) {
+                    await window.taskflow.tasks.setCompleted(taskId, true);
+                    await window.taskflow.tasks.setPluginData(taskId, 'statuses', { status: 'done' });
+                  } else {
+                    await window.taskflow.tasks.setCompleted(taskId, false);
+                    await window.taskflow.tasks.setPluginData(taskId, 'statuses', { status: targetColumnId });
+                  }
+                } catch (err) {
+                  console.error('[Kanban] drag save error:', err);
+                }
+              })();
+            }
+
+            dragState.dragOccurred = true;
+            const saved = dragState.dragOccurred;
+            resetDragState();
+            dragState.dragOccurred = saved;
+          };
+
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        });
+      }
+
+      document.addEventListener('selectstart', e => {
+        if (dragState.taskId) e.preventDefault();
+      });
+
+      window.addEventListener('taskflow:update', event => {
+        const incoming = event.detail;
+        if (!incoming || !isBootstrapped) return;
+        appState = incoming;
+        render();
+      });
+
+      (async function bootstrap() {
+        let attempts = 0;
+        while (!window.taskflow && attempts < 50) {
+          await new Promise(r => setTimeout(r, 100));
+          attempts++;
+        }
+        if (!window.taskflow) { console.error('[Kanban] taskflow bridge unavailable'); return; }
+        await loadStatuses();
+        await loadSorting();
+        await refreshTasks();
+        isBootstrapped = true;
+        render();
+      })();
+    </script>
+  </body>
+</html>

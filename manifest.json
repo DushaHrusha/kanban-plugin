@@ -1,0 +1,12 @@
+{
+  "id": "kanban-board",
+  "name": "Kanban Board",
+  "version": "0.3.0",
+  "description": "Kanban board view for tasks with drag & drop and per-column sorting.",
+  "dependencies": ["statuses"],
+  "permissions": ["tasks.read", "tasks.write", "plugin.storage"],
+  "entrypoints": [
+    { "id": "project-kanban", "type": "project_page", "title": "Kanban", "file": "index.html" },
+    { "id": "tasks-kanban", "type": "task_view", "title": "Kanban", "file": "index.html" }
+  ]
+}
